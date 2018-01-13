@@ -1,8 +1,7 @@
 import numpy as np
 from scipy.stats import norm
 import matplotlib.pyplot as plt
-import puzzlotope.Input
-import puzzlotope.Chem as Chem
+from puzzlotope.Element import ProbMass
 
 try:
 	from sklearn.mixture import GaussianMixture
@@ -67,7 +66,7 @@ def estimateSigma(x, y, num_samples=10000, verbose=False):
 		print('  weights: %s' % weights)
 		print('  sigma: %f' % sigma)
 	
-	pms=[Chem.ProbMass(_p, _m) for _m, _p in zip(means, weights)]
+	pms=[ProbMass(_p, _m) for _m, _p in zip(means, weights)]
 		
 	return sigma, pms
 	
@@ -102,15 +101,15 @@ if __name__=='__main__':
 	x=np.linspace(414.0, 425.0,1000)
 	
 	diracs=(
-		Chem.ProbMass(100, 415.0),
-		Chem.ProbMass(24.64, 416.0),
-		Chem.ProbMass(79.43, 417.0),
-		Chem.ProbMass(22.33, 418.0),
-		Chem.ProbMass(28.18, 419.0),
-		Chem.ProbMass(7.58, 420.0),
-		Chem.ProbMass(4.79, 421.0),
-		Chem.ProbMass(1.01, 422.0),
-		Chem.ProbMass(0.29, 423.0)
+		ProbMass(100, 415.0),
+		ProbMass(24.64, 416.0),
+		ProbMass(79.43, 417.0),
+		ProbMass(22.33, 418.0),
+		ProbMass(28.18, 419.0),
+		ProbMass(7.58, 420.0),
+		ProbMass(4.79, 421.0),
+		ProbMass(1.01, 422.0),
+		ProbMass(0.29, 423.0)
 				)
 	
 	params=(

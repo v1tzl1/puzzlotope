@@ -4,15 +4,14 @@ import numpy as np
 import pickle
 import multiprocessing
 import time
+import sys
 
-import puzzlotope.Input
 import puzzlotope.Chem as Chem
 import puzzlotope.Measurement
-import puzzlotope.gmm
 import puzzlotope.probability
+from puzzlotope.Element import ProbMass
 
 def solveCombination(total, verbose=False):
-	Chem.update()
 	
 	tmp = [CombinationResult(total), ]
 	
@@ -41,18 +40,18 @@ def _buildSpectrumWorker(comb_queue, return_queue, tolerance, cutoff):
 			print('Keyboard interrupt, quitting')
 			break
 
-def buildSpectrums(combinations, tolerance, cutoff, num_threads, verbose=False):
+def buildSpectrums(combinations, tolerance, cutoff, num_threads, prefix='', verbose=False):
 	spectra=[]
 	
 	if num_threads == 1:
 		""" Single Thread version """
 		for comb in combinations:
 			if verbose:
-				print('Building Isotope spectrum for ' + str(comb))
+				print(prefix+'Building Isotope spectrum for ' + str(comb))
 			spectra.append(Spectrum(comb, tolerance, cutoff))
 		
 		if verbose:
-			print('done building spectra')
+			print(prefix+'  done building spectra')
 		
 	else:
 		""" Multi Thread Option """
@@ -68,7 +67,7 @@ def buildSpectrums(combinations, tolerance, cutoff, num_threads, verbose=False):
 			comb_queue.put( 'QUIT' )
 		
 		if verbose:
-			print('Starting %d parallel threads to compute spectra' % num_threads)
+			print(prefix+'Starting %d parallel threads to compute spectra' % num_threads)
 			
 		# start processes
 		processes = []
@@ -77,23 +76,21 @@ def buildSpectrums(combinations, tolerance, cutoff, num_threads, verbose=False):
 			p.start()
 			processes.append(p)
 		
-		if verbose:
-			print('All processes started, collecting results')
-		
 		# collect computed spectras
 		while len(spectra) < len(combinations):
 			_spectrum = return_queue.get(block=True, timeout=None)
 			spectra.append(_spectrum)
-			time_str = time.strftime("%H:%M:%S")
-			num_threads_active = sum([1 for p in processes if p.is_alive()])
-			progress_total = 100.0*len(spectra)/len(combinations)
-			print('%s Spectrum for %s computed, %5.1f%% total, %2d/%d threads active' % (time_str, _spectrum.comb.getCombString(), progress_total, num_threads_active, num_threads))
+			if verbose:
+				time_str = time.strftime("%H:%M:%S")
+				num_threads_active = sum([1 for p in processes if p.is_alive()])
+				progress_total = 100.0*len(spectra)/len(combinations)
+				print(prefix+'    %s Spectrum for %s computed, %5.1f%% total, %2d/%d threads active' % (time_str, _spectrum.comb.getCombString(), progress_total, num_threads_active, num_threads))
 		
 		for p in processes:
 			p.join()
 		
 		if verbose:
-			print('done building spectra')
+			print(prefix+'  done building spectra')
 	
 	return spectra
 
@@ -112,15 +109,15 @@ class Spectrum:
 			mass=0.0
 			for isotope in leaf.getBranchString():
 				mass+=Chem.getIsotopeMass(isotope)
-			self.pms.append(Chem.ProbMass(leaf.prob, mass))
+			self.pms.append(ProbMass(leaf.prob, mass))
 		self.__normalize(tolerance, cutoff)
 	
 	"""
 	def __init__(self, combination, tolerance, cutoff):
-		tmp = [Chem.ProbMass(),]
+		tmp = [ProbMass(),]
 		for i in range(Chem.getNumBlocks()):
 			if combination.N[i]>0:
-				tmp = Chem.ProbMass.merge(tmp, Chem.Blocks[i].getMasses(cutoff), combination.N[i], cutoff)
+				tmp = ProbMass.merge(tmp, Chem.Blocks[i].getMasses(cutoff), combination.N[i], cutoff)
 		
 		self.comb = combination
 		self.pms=tmp
@@ -148,7 +145,30 @@ class Spectrum:
 		self.scale=self.getScale()
 	
 	@staticmethod
-	def printSpectra(spectra, w_min, w_max, spectrum_meas=None):
+	def _extractSpectrum(weights, spectrum):
+		_tmp = {w:0.0 for w in weights}
+		_other_count=0
+		_other_prob = 0.0
+		for pm in spectrum.pms:
+			_k=round(pm.mass)
+			if _k in _tmp:
+				_tmp[_k] += pm.prob
+			else:
+				_other_count += 1
+				_other_prob += pm.prob
+		
+		_vec=[]
+		for w in weights:
+			_vec.append(spectrum.scale*_tmp[w])
+		_vec=np.array(_vec)
+
+		return _vec, _other_count, _other_prob
+		
+	
+	@staticmethod
+	def printSpectra(spectra, w_min, w_max, spectrum_meas=None, prefix='', f_txt=None, f_csv=None):
+		TOPN=10 if len(spectra)>=10 else len(spectra)
+
 		weights=range(w_min, w_max+1)
 		norms_title= ('RMS', 'L_inf', 'L_1')
 		sort_by_indx=0 # sort by RMS
@@ -156,15 +176,32 @@ class Spectrum:
 		print_normst = lambda x: '  '.join(['%8s' % _t for _t in x])
 		print_norms  = lambda x: '  '.join(['%8.4f' % _w for _w in x])
 		print_weights = lambda x: '  '.join(['%5.1f' %  _w for _w in x])
+		print_normst_csv = lambda x: ','.join(['"%s"' % _t for _t in x])
+		print_norms_csv  = lambda x: ','.join(['"%f"' % _w for _w in x])
+		print_weightst_csv = lambda x: ','.join(['"%d"' %  _w for _w in x])
+		print_weights_csv = lambda x: ','.join(['"%f"' %  _w for _w in x])
 		name_len=len(spectra[0].comb.getCombString())
-		print('%-*s:  %s' % (name_len, 'Combination', print_normst(norms_title)), end='')
-		for w in weights:
-			print('  %5d' % w, end='')
-		print('')
 		
+		if f_txt:		
+			print('%-*s:  %s' % (name_len, 'Combination', print_normst(norms_title)), end='', file=f_txt)
+			for w in weights:
+				print('  %5d' % w, end='', file=f_txt)
+			print('', file=f_txt)
+		if f_csv:		
+			print('"%s",%s,%s,"remarks"' % ('Combination', print_normst_csv(norms_title), print_weightst_csv(weights)), file=f_csv)
+		print(prefix + '%d combinations that best fit the measured spectrum.' % TOPN)
+		if f_txt or f_csv:
+			print(prefix + '  detailed lists are in:')
+			if f_txt:			
+				print(prefix + '    ' + f_txt .name)
+			if f_csv:
+				print(prefix + '    ' + f_csv.name)
+			print('')
+		print(prefix + '%-*s:  %s' % (name_len, 'Combination', print_normst(norms_title)))
 		
 		if spectrum_meas:
-			print('%-*s:  ' %(name_len, 'Measurements'), end='')
+			if f_txt:
+				print('%-*s:  ' %(name_len, 'Measurements'), end='', file=f_txt)
 			_tmp = {w:0.0 for w in weights}
 			for pm in spectrum_meas:
 				_k=round(pm.mass)
@@ -177,26 +214,16 @@ class Spectrum:
 			vec_meas=np.array(vec_meas)
 			vec_meas = vec_meas*100.0/np.max(vec_meas)
 			
-			print('%s  ' % print_normst(['',]*len(norms_title)), end='')
-			print(print_weights(vec_meas))
-		
+			_empty_norm_str = print_normst(['',]*len(norms_title))
+			if f_txt:
+				print('%s  ' % _empty_norm_str, end='', file=f_txt)
+				print(print_weights(vec_meas), file=f_txt)
+			print(prefix+'%-*s:  %s' %(name_len, 'Measurements', _empty_norm_str))
+			
+
 		results = []
 		for spectrum in spectra:
-			_tmp = {w:0.0 for w in weights}
-			_other_count=0
-			_other_prob = 0.0
-			for pm in spectrum.pms:
-				_k=round(pm.mass)
-				if _k in _tmp:
-					_tmp[_k] += pm.prob
-				else:
-					_other_count += 1
-					_other_prob += pm.prob
-			
-			_vec=[]
-			for w in weights:
-				_vec.append(spectrum.scale*_tmp[w])
-			_vec=np.array(_vec)
+			_vec, _other_count, _other_prob = Spectrum._extractSpectrum(weights, spectrum)
 			
 			_norm_rms = np.asscalar(np.sqrt(np.sum((_vec-vec_meas)**2.0)))
 			_norm_inf = np.asscalar(np.max(np.abs(_vec-vec_meas)))
@@ -217,8 +244,14 @@ class Spectrum:
 			
 			results.append( (_name, _norms, _peaks, _other_str) )
 		
-		for _name, _norms, _peaks, _other_str in sorted(results, key=lambda x:x[1][sort_by_indx]):
-			print('%-*s:  %s  %s  %s' % (name_len, _name, print_norms(_norms), print_weights(_peaks), _other_str))
+		if f_txt:
+			for _name, _norms, _peaks, _other_str in sorted(results, key=lambda x:x[1][sort_by_indx]):
+				print('%-*s:  %s  %s  %s' % (name_len, _name, print_norms(_norms), print_weights(_peaks), _other_str), file=f_txt)
+		if f_csv:
+			for _name, _norms, _peaks, _other_str in sorted(results, key=lambda x:x[1][sort_by_indx]):
+				print('"%s",%s,%s,"%s"' % (_name, print_norms_csv(_norms), print_weights_csv(_peaks-vec_meas), _other_str), file=f_csv)
+		for _name, _norms, _peaks, _other_str in sorted(results, key=lambda x:x[1][sort_by_indx])[:TOPN]:
+				print(prefix+'%-*s:  %s' % (name_len, _name, print_norms(_norms)))
 	
 	def getTopN(self,N=4):
 		ret = sorted(self.pms, reverse=True)
@@ -370,8 +403,8 @@ class CombinationResult:
 		return ' '.join(string)
 	
 	@staticmethod
-	def filter(combinations, tolerance):
-		print('Filtering %d combination resuls' % len(combinations))
+	def filter(combinations, tolerance, file_out=sys.stdout):
+		print('Filtering %d combination resuls' % len(combinations), file=file_out)
 		_valid=[]
 		_invalid_count=0
 		_neglected=[]
@@ -385,14 +418,13 @@ class CombinationResult:
 				_neglected_reasons.append(' AND '.join(reasons))
 			else:
 				_invalid_count += 1
-		print('  %d invalid combinations' % _invalid_count)
-		print('  %d neglected:' % len(_neglected))
+		print('  %d invalid combinations' % _invalid_count, file=file_out)
+		print('  %d neglected:' % len(_neglected), file=file_out)
 		for _n, _reason  in zip(_neglected, _neglected_reasons):
-			print('	%s: %s' % (_n.getCombString(), _reason))
-		print('  %d combinations remaining:' % len(_valid))
+			print('	%s: %s' % (_n.getCombString(), _reason), file=file_out)
+		print('  %d combinations remaining:' % len(_valid), file=file_out)
 		for _c in _valid:
-			print('	' + _c.getCombString())
-		print('-'*15)
+			print('	' + _c.getCombString(), file=file_out)
 		return _valid
 	
 if __name__ == '__main__':

@@ -2,6 +2,8 @@
 import sys
 import pickle
 import multiprocessing
+import os.path
+from timeit import default_timer as timer
 
 try:
     import numpy as np
@@ -22,13 +24,19 @@ except ImportError:
     sys.exit(1)
 
 import puzzlotope.Solver
-import puzzlotope.Input
 import puzzlotope.Chem
 import puzzlotope.Measurement
 import puzzlotope.gmm
-import puzzlotope.probability
+#import puzzlotope.probability
 
-def run(proj_name, spectrum_fname, weight_tolerance, prob_cutoff, xlims, recompute_from=0, do_plots=False, num_threads=multiprocessing.cpu_count()):
+def setBlocks(blocks):
+	for block in blocks:
+		if not isinstance(block, puzzlotope.Chem.Block):
+			raise TypeError('Element in blocks list is not of type Chem.Block')
+	
+	puzzlotope.Chem.Blocks = blocks
+
+def run(proj_name, spectrum_fname, weight_tolerance, prob_cutoff, xlims, recompute=False, do_plots=False, num_threads=multiprocessing.cpu_count()):
 	Chem.update()
 	sep = '-'*15
 	
@@ -50,18 +58,24 @@ def run(proj_name, spectrum_fname, weight_tolerance, prob_cutoff, xlims, recompu
 	### Step 1: Computing possible combinations
 	print('Step 1: Computing main isotope combinations')
 	s1_fname='data/%s_combinations.p' % proj_name
+	s1_txtname='data/%s_combinations.txt' % proj_name
 	print('    storing results in %s' % s1_fname)
+	print('    a detailed list of combinations is in %s' % s1_txtname)
 	print('    target mass is %f' % mass_main_peak)
 	
-	if recompute_from <= 1:
+	if recompute or not os.path.isfile(s1_fname):
 		allCombinations = puzzlotope.Solver.solveCombination(mass_main_peak)
-		filteredCombinations = puzzlotope.Solver.CombinationResult.filter(allCombinations, weight_tolerance)
+		with open(s1_txtname,'w') as txtf:
+			filteredCombinations = puzzlotope.Solver.CombinationResult.filter(allCombinations, weight_tolerance, file_out=txtf)
 		with open(s1_fname, 'wb') as _f:
 			pickle.dump(filteredCombinations, _f)
 	else:
 		with open(s1_fname, 'rb') as _f:
 			filteredCombinations = pickle.load(_f)
 			print('    loaded %d combinations' % len(filteredCombinations))
+	print('    Using %d combinations:' % len(filteredCombinations))
+	for comb in filteredCombinations:
+		print('      ' + comb.getCombString())
 	print(sep)
 	
 	### Step 2: Computing spectra for found combinations
@@ -69,8 +83,13 @@ def run(proj_name, spectrum_fname, weight_tolerance, prob_cutoff, xlims, recompu
 	s2_fname='data/%s_spectra.p' % proj_name
 	print('    storing results in %s' % s2_fname)
 	print('    number of combinations is %d' % len(filteredCombinations))
-	if recompute_from <= 2:
-		spectra = puzzlotope.Solver.buildSpectrums(filteredCombinations, weight_tolerance, prob_cutoff, num_threads, verbose=True)
+	if recompute or not os.path.isfile(s2_fname):
+		start = timer()
+		spectra = puzzlotope.Solver.buildSpectrums(filteredCombinations, weight_tolerance, prob_cutoff, num_threads, verbose=True, prefix='    ')
+		end = timer()
+		ellapsed = (end-start)
+		print('    Time for spectrum computation: %f s' % ellapsed)
+		print('      thats %f spectra per minute' % (len(filteredCombinations)/ellapsed*60.0))
 		with open(s2_fname, 'wb') as _f:
 			pickle.dump(spectra, _f)
 	else:
@@ -82,8 +101,11 @@ def run(proj_name, spectrum_fname, weight_tolerance, prob_cutoff, xlims, recompu
 	
 	### Step 3: Analyse spectrum mass peaks
 	print('Step 3: Analyse spectrum mass peaks')
-	
-	puzzlotope.Solver.Spectrum.printSpectra(spectra, xlims[0], xlims[1], diracs)
+	s3_txtname = 'data/%s_spectra.txt' % proj_name
+	s3_csvname = 'data/%s_spectra.csv' % proj_name
+	with open(s3_txtname,'w') as txtf:
+		with open(s3_csvname, 'w') as csvf:
+			puzzlotope.Solver.Spectrum.printSpectra(spectra, xlims[0], xlims[1], diracs, prefix='    ', f_txt=txtf, f_csv=csvf)
 	print(sep)
 	
 	"""
