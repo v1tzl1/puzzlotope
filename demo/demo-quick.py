@@ -25,13 +25,27 @@ cutoff_percent=1e-4
 limits=[414, 425]
 
 # filename of spectrum measurement file
+# the file should contain two numeric values per line. The values should
+# be separated by a space. The first value is a mass, the second one is
+# a measured intensity (relative to other intensities in the same file)
 spectrum_file = 'spectrum.xy'
 
 # project name (temporary files will contain this in their file name)
+# as this is used in filenames, spaces and umlauts should be avoided
+#
 # use the name of this file without the .py extension
 proj_name = os.path.splitext(os.path.basename(__file__))[0]
+# alternatively set a name yourself
+# proj_name = 'myawesomeproject'
 
 # Set to True if combinations should be recmputed
+# otherwise they are loaded from a stored file if they have been
+# computed before
+#
+# ! Important !
+# When the Blocks, spectrum, or cidpeaks variables are changed a recomputation
+# had to be performed (this is not detected automatically) otherwise the
+# output is still for the old values.
 recompute=False
 
 # Neglect Mg and Cl to speed up computation
@@ -45,8 +59,15 @@ Blocks = (
             Block('O'      , [-2,]        , tags=[Tag.optional])
         )
 
+# Measured CID peaks
+cidpeaks = [357.12, 346.99, 338.01, 299.18, 289.05, 280.08, 269.95, 260.97, 231.12, 222.14, 212.01, 203.04, 192.91, 183.93, 154.08, 145.10, 134.97, 126.00, 115.87,  77.04,  68.06,  57.94]
+
+# How many mass units can a measured and predicted peak be apart to
+# still count as the same peak?
+cidtolerance = 0.3
+
 puzzlotope.setBlocks(Blocks)
 
 """ Run isotope puzzle """
 
-puzzlotope.run(proj_name, spectrum_file, tolerance, cutoff_percent/100.0, limits, recompute=recompute, do_plots=False)
+puzzlotope.run(proj_name, spectrum_file, tolerance, cutoff_percent/100.0, limits, cidpeaks, cidtolerance, recompute=recompute, do_plots=False)

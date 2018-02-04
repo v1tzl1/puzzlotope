@@ -1,7 +1,6 @@
 import math
 import copy
 import numpy as np
-import pickle
 import multiprocessing
 import time
 import sys
@@ -98,6 +97,8 @@ class Spectrum:
 	comb=None
 	pms=[]
 	scale=None
+	metrics=None
+	metrics_name=None
 	
 	def __init__(self, combination, tolerance, cutoff):
 		tree=combination.buildIsotopeTree(cutoff)
@@ -143,6 +144,7 @@ class Spectrum:
 		#print('normalization reduced spectrum from %d elements to %d' % (len(self.pms), len(__new_pms)))
 		self.pms=__new_pms
 		self.scale=self.getScale()
+        
 	
 	@staticmethod
 	def _extractSpectrum(weights, spectrum):
@@ -168,7 +170,7 @@ class Spectrum:
 	@staticmethod
 	def printSpectra(spectra, w_min, w_max, spectrum_meas=None, prefix='', f_txt=None, f_csv=None):
 		TOPN=10 if len(spectra)>=10 else len(spectra)
-
+		
 		weights=range(w_min, w_max+1)
 		norms_title= ('RMS', 'L_inf', 'L_1')
 		sort_by_indx=0 # sort by RMS
@@ -189,7 +191,7 @@ class Spectrum:
 			print('', file=f_txt)
 		if f_csv:		
 			print('"%s",%s,%s,"remarks"' % ('Combination', print_normst_csv(norms_title), print_weightst_csv(weights)), file=f_csv)
-		print(prefix + '%d combinations that best fit the measured spectrum.' % TOPN)
+		print(prefix + 'Top %d of %d combinations.' % (TOPN, len(spectra)))
 		if f_txt or f_csv:
 			print(prefix + '  detailed lists are in:')
 			if f_txt:			
@@ -234,7 +236,10 @@ class Spectrum:
 			
 			if not len(_norms) == len(norms_title):
 				raise ValueError('Mismatch in norm titles and implementation')
-			 
+			
+			spectrum.metrics_name = norms_title
+			spectrum.metrics = _norms
+			
 			_peaks = [_m for _m in np.nditer(_vec)]
 			 
 			if _other_count > 0:
@@ -266,11 +271,22 @@ class Spectrum:
 		return '%s: %s' % (self.comb.getCombString(space=True), str(spec_scaled))
 
 class CombinationResult:
-	def __init__(self, total, weight=0.0, N=[]):
-		self.weight=copy.copy(weight)
+	def __init__(self, total, weight=None, N=[]):
 		self.N = copy.copy(N)
 		self.total=total
+		if weight:
+			self.weight=copy.copy(weight)
+		else:
+			self.weight = 0.0
+			for i in range(len(self.N)):
+				self.weight += self.N[i] * Chem.getBlockMasses(i)
 	
+	@staticmethod
+	def getDifference(a, b):
+		newN = [na-nb for na, nb in zip(a.N, b.N)]
+		return CombinationResult(a.total, N=newN)
+
+
 	def buildIsotopeTree(self, cutoff):
 		elements=self.getElements()
 		tree=puzzlotope.probability.TreeNode()
@@ -279,8 +295,6 @@ class CombinationResult:
 			tree.addLevel(probs, labels)
 			tree.cutoff(cutoff)
 		return tree
-	
-	
 	
 	def spawn(self, newN, verbose):
 		level = len(self.N)
@@ -387,7 +401,13 @@ class CombinationResult:
 
 	def __repr__(self):
 		return '[resutl (%s): res=%8.4f, w=%8.4f, N=%s]' % (('complete' if self.isComplete() else 'incomplete'), self.total-self.weight, self.weight, str(self.N))
-
+	
+	def getStringLen(self, space=True):
+		if space:
+			return len(self.N)*5 - 1 + sum([len(b.toSymbol()) for b in Chem.Blocks])
+		else:
+			return len(self.getCombString(spcae))
+	
 	def getCombString(self, space=True):
 		string=[]
 		for i in range(Chem.getNumBlocks()):
