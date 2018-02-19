@@ -23,10 +23,12 @@ class Element:
     def getProbsAndLabels(self):
     	probs=[]
     	labels=[]
+    	masses=[]
     	for pm in sorted(self.isotopes):
     		probs.append(pm.prob)
     		labels.append(self.symbol + str(round(pm.mass)))
-    	return probs, labels
+    		masses.append(pm.mass)
+    	return probs, labels, masses
 
 class ProbMass:
     prob=None

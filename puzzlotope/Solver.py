@@ -33,7 +33,7 @@ def _buildSpectrumWorker(comb_queue, return_queue, tolerance, cutoff):
 			if comb == 'QUIT':
 				break
 			
-			spectrum = Spectrum(comb, tolerance, cutoff)
+			spectrum = Spectrum.computeSpectrum(comb, tolerance, cutoff)
 			return_queue.put(spectrum, block=True, timeout=None)
 		except KeyboardInterrupt:
 			print('Keyboard interrupt, quitting')
@@ -47,7 +47,7 @@ def buildSpectrums(combinations, tolerance, cutoff, num_threads, prefix='', verb
 		for comb in combinations:
 			if verbose:
 				print(prefix+'Building Isotope spectrum for ' + str(comb))
-			spectra.append(Spectrum(comb, tolerance, cutoff))
+			spectra.append(Spectrum.computeSpectrum(comb, tolerance, cutoff))
 		
 		if verbose:
 			print(prefix+'  done building spectra')
@@ -100,6 +100,23 @@ class Spectrum:
 	metrics=None
 	metrics_name=None
 	
+	@staticmethod
+	def computeSpectrum(comb, tolerance, cutoff):
+		tree=comb.buildIsotopeTree(cutoff)
+		
+		masses=[]
+		probs=[]
+		
+		for leaf in tree.getLeafs():
+			mass=0.0
+			for isotope in leaf.getBranchString():
+				mass+=Chem.getIsotopeMass(isotope)
+			masses.append(mass)
+			probs.append(leaf.prob)
+		
+		return Spectrum(comb, probs, masses, tolerance, cutoff)
+		
+	"""
 	def __init__(self, combination, tolerance, cutoff):
 		tree=combination.buildIsotopeTree(cutoff)
 		
@@ -112,7 +129,14 @@ class Spectrum:
 				mass+=Chem.getIsotopeMass(isotope)
 			self.pms.append(ProbMass(leaf.prob, mass))
 		self.__normalize(tolerance, cutoff)
+	"""
 	
+	def __init__(self, combination, probs, masses, tolerance, cutoff):
+		#print('Creating spectrum with %d masses and %d probabilities' % (len(masses), len(probs)))
+		self.comb = combination
+		self.pms = [ProbMass(_p, _m) for _p, _m in zip(probs, masses)]
+		self.__normalize(tolerance, cutoff)
+		
 	"""
 	def __init__(self, combination, tolerance, cutoff):
 		tmp = [ProbMass(),]
@@ -226,7 +250,6 @@ class Spectrum:
 		results = []
 		for spectrum in spectra:
 			_vec, _other_count, _other_prob = Spectrum._extractSpectrum(weights, spectrum)
-			
 			_norm_rms = np.asscalar(np.sqrt(np.sum((_vec-vec_meas)**2.0)))
 			_norm_inf = np.asscalar(np.max(np.abs(_vec-vec_meas)))
 			_norm_max = np.asscalar(np.sqrt(np.sum(np.abs(_vec-vec_meas))))
@@ -452,4 +475,4 @@ if __name__ == '__main__':
 	__N=([0,]*Chem.getNumBlocks())
 	__N[-1]=2
 	cr = CombinationResult(415, weight=415, N=__N)
-	print(Spectrum(cr,0.3,1e-7))
+	print(Spectrum.computeSpectrum(cr,0.3,1e-7))

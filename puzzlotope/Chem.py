@@ -18,11 +18,11 @@ def update():
 		raise ValueError('Building blocks for isotope puzzle is empty. Did you run puzzlotope.setBlocks() ?')
 
 def getBlockMasses(i=None):
-    global Blocks
-    if i is None:
-        return [b.getMass() for b in Blocks]
-    else:
-        return Blocks[i].getMass()
+	global Blocks
+	if i is None:
+		return [b.getMass() for b in Blocks]
+	else:
+		return Blocks[i].getMass()
 
 def getNumBlocks():
     global Blocks

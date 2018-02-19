@@ -27,6 +27,7 @@ import puzzlotope.Solver
 import puzzlotope.Chem
 import puzzlotope.Measurement
 import puzzlotope.gmm
+import puzzlotope.sourcespectra
 from puzzlotope.cidspectrum import CIDSpectrum
 #import puzzlotope.probability
 
@@ -86,7 +87,7 @@ def run(proj_name, spectrum_fname, weight_tolerance, prob_cutoff, xlims, cid_pea
 	print('	number of combinations is %d' % len(filteredCombinations))
 	if recompute or not os.path.isfile(s2_fname):
 		start = timer()
-		spectra = puzzlotope.Solver.buildSpectrums(filteredCombinations, weight_tolerance, prob_cutoff, num_threads, verbose=True, prefix='    ')
+		spectra = puzzlotope.sourcespectra.buildSpectra(filteredCombinations, weight_tolerance, prob_cutoff,  num_threads, verbose=True, prefix='    ')
 		end = timer()
 		ellapsed = (end-start)
 		print('	Time for spectrum computation: %f s' % ellapsed)
