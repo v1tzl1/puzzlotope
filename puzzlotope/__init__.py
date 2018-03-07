@@ -157,6 +157,11 @@ def run(proj_name, spectrum_fname, weight_tolerance, prob_cutoff, xlims, cid_pea
 	print('	%-*s | Combined |  Isotope |   CID   |' % (comblen, 'Combination'))
 	for i in range(TOPN):
 		print('	%s | %8.2f | %8.2f | %8.2f |' % tuple(finalvalues[i]))
+	with open(s6_csvname, 'w') as f_csv:
+		print('"Combination","Combined Metric","Source Metric","CID Metric"', file=f_csv)
+		for i in range(len(finalvalues)):
+			print('"%s","%f","%f","%f"' % tuple(finalvalues[i]), file=f_csv)
+			
 	print(sep)
 	
 	
