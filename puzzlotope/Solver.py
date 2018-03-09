@@ -423,7 +423,7 @@ class CombinationResult:
 		return abs(self.total-self.weight)
 
 	def __repr__(self):
-		return '[resutl (%s): res=%8.4f, w=%8.4f, N=%s]' % (('complete' if self.isComplete() else 'incomplete'), self.total-self.weight, self.weight, str(self.N))
+		return '[result (%s): res=%8.4f, w=%8.4f, N=%s]' % (('complete' if self.isComplete() else 'incomplete'), self.total-self.weight, self.weight, str(self.N))
 	
 	def getStringLen(self, space=True):
 		if space:
